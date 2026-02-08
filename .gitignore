@@ -1,0 +1,15 @@
+# Окружение
+venv/
+.env
+
+# Временные файлы Python
+__pycache__/
+*.pyc
+
+# Настройки IDE
+.idea/
+.vscode/
+
+# Системные файлы
+.DS_Store
+Thumbs.db
