@@ -2,23 +2,23 @@ import logging
 
 import pendulum
 from airflow.decorators import dag, task
-from examples.stg.bonus_system_ranks_dag.ranks_loader import RankLoader
-from examples.stg.bonus_system_ranks_dag.users_loader import UserLoader
-from examples.stg.bonus_system_ranks_dag.outbox_loader import OutboxLoader
-from lib import ConnectionBuilder
+from lib.bonus_system.ranks_loader import RankLoader
+from lib.bonus_system.users_loader import UserLoader
+from lib.bonus_system.outbox_loader import OutboxLoader
+from lib.pg_connect import ConnectionBuilder
 
 log = logging.getLogger(__name__)
 
 
 @dag(
-    dag_id='sprint5_stg_bonus_system_load',
+    dag_id='stg_bonus_system_load',
     schedule_interval='0/15 * * * *',  # Задаем расписание выполнения дага - каждый 15 минут.
-    start_date=pendulum.datetime(2022, 5, 5, tz="UTC"),  # Дата начала выполнения дага. Можно поставить сегодня.
+    start_date=pendulum.datetime(2026, 2, 8, tz="UTC"),  # Дата начала выполнения дага. Можно поставить сегодня.
     catchup=False,  # Нужно ли запускать даг за предыдущие периоды (с start_date до сегодня) - False (не нужно).
-    tags=['sprint5', 'stg', 'origin', 'example'],  # Теги, используются для фильтрации в интерфейсе Airflow.
+    tags=['stg', 'bonus_system'],  # Теги, используются для фильтрации в интерфейсе Airflow.
     is_paused_upon_creation=True  # Остановлен/запущен при появлении. Сразу запущен.
 )
-def sprint5_example_stg_bonus_system_ranks_dag():
+def stg_bonus_system_ranks_dag():
     # Создаем подключение к базе dwh.
     dwh_pg_connect = ConnectionBuilder.pg_conn("PG_WAREHOUSE_CONNECTION")
 
@@ -52,4 +52,4 @@ def sprint5_example_stg_bonus_system_ranks_dag():
     ranks_dict >> users_dict >>outbox_dict# type: ignore
 
 
-stg_bonus_system_ranks_dag = sprint5_example_stg_bonus_system_ranks_dag()
+stg_bonus_system_ranks_dag = stg_bonus_system_ranks_dag()

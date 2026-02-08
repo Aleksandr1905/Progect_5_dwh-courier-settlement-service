@@ -1,18 +1,16 @@
 from logging import Logger
 from typing import Callable, Any
 
-from examples.dds.dds_settings_repository import DdsEtlSettingsRepository
-from examples.dds.dds_settings_repository import EtlSetting
-from lib import PgConnect
-from lib.dict_util import str2json, json2str
-
+from lib.settings_repository import EtlSettingsRepository, EtlSetting
+from lib.pg_connect import PgConnect
+from lib.dict_util import json2str
 
 class DdsLoader:
     BATCH_LIMIT = 1000
 
     def __init__(self,
                  reader: Any,
-                 settings_repository: DdsEtlSettingsRepository,
+                 settings_repository: EtlSettingsRepository,
                  save_handler: Callable,
                  workflow_key: str,
                  stg_table_name: str,

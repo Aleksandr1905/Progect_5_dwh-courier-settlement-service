@@ -1,34 +1,36 @@
 from logging import Logger
 from typing import List
 
-from examples.stg import EtlSetting, StgEtlSettingsRepository
-from lib import PgConnect
+from lib.settings_repository import EtlSetting, EtlSettingsRepository
+from lib.pg_connect import PgConnect
 from lib.dict_util import json2str
 from psycopg import Connection
 from psycopg.rows import class_row
 from pydantic import BaseModel
 
 
-class UserObj(BaseModel):
+class RankObj(BaseModel):
     id: int
-    order_user_id: str
+    name: str
+    bonus_percent: float
+    min_payment_threshold: float
 
 
-class UsersOriginRepository:
+class RanksOriginRepository:
     def __init__(self, pg: PgConnect) -> None:
         self._db = pg
 
-    def list_users(self, user_threshold: int, limit: int) -> List[UserObj]:
-        with self._db.client().cursor(row_factory=class_row(UserObj)) as cur:
+    def list_ranks(self, rank_threshold: int, limit: int) -> List[RankObj]:
+        with self._db.client().cursor(row_factory=class_row(RankObj)) as cur:
             cur.execute(
                 """
-                    SELECT id, order_user_id
-                    FROM users
+                    SELECT id, name, bonus_percent, min_payment_threshold
+                    FROM ranks
                     WHERE id > %(threshold)s --Пропускаем те объекты, которые уже загрузили.
                     ORDER BY id ASC --Обязательна сортировка по id, т.к. id используем в качестве курсора.
                     LIMIT %(limit)s; --Обрабатываем только одну пачку объектов.
                 """, {
-                    "threshold": user_threshold,
+                    "threshold": rank_threshold,
                     "limit": limit
                 }
             )
@@ -36,38 +38,42 @@ class UsersOriginRepository:
         return objs
 
 
-class UserDestRepository:
+class RankDestRepository:
 
-    def insert_user(self, conn: Connection, user: UserObj) -> None:
+    def insert_rank(self, conn: Connection, rank: RankObj) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                    INSERT INTO stg.bonussystem_users(id, order_user_id)
-                    VALUES (%(id)s, %(order_user_id)s)
+                    INSERT INTO stg.bonussystem_ranks(id, name, bonus_percent, min_payment_threshold)
+                    VALUES (%(id)s, %(name)s, %(bonus_percent)s, %(min_payment_threshold)s)
                     ON CONFLICT (id) DO UPDATE
                     SET
-                        order_user_id = EXCLUDED.order_user_id;
+                        name = EXCLUDED.name,
+                        bonus_percent = EXCLUDED.bonus_percent,
+                        min_payment_threshold = EXCLUDED.min_payment_threshold;
                 """,
                 {
-                    "id": user.id,
-                    "order_user_id": user.order_user_id
+                    "id": rank.id,
+                    "name": rank.name,
+                    "bonus_percent": rank.bonus_percent,
+                    "min_payment_threshold": rank.min_payment_threshold
                 },
             )
 
 
-class UserLoader:
-    WF_KEY = "users_origin_to_stg_workflow"
+class RankLoader:
+    WF_KEY = "example_ranks_origin_to_stg_workflow"
     LAST_LOADED_ID_KEY = "last_loaded_id"
-    BATCH_LIMIT = 100
+    BATCH_LIMIT = 1  # Рангов мало, но мы хотим продемонстрировать инкрементальную загрузку рангов.
 
     def __init__(self, pg_origin: PgConnect, pg_dest: PgConnect, log: Logger) -> None:
         self.pg_dest = pg_dest
-        self.origin = UsersOriginRepository(pg_origin)
-        self.stg = UserDestRepository()
-        self.settings_repository = StgEtlSettingsRepository()
+        self.origin = RanksOriginRepository(pg_origin)
+        self.stg = RankDestRepository()
+        self.settings_repository = EtlSettingsRepository()
         self.log = log
 
-    def load_users(self):
+    def load_ranks(self):
         # открываем транзакцию.
         # Транзакция будет закоммичена, если код в блоке with пройдет успешно (т.е. без ошибок).
         # Если возникнет ошибка, произойдет откат изменений (rollback транзакции).
@@ -81,20 +87,20 @@ class UserLoader:
 
             # Вычитываем очередную пачку объектов.
             last_loaded = wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY]
-            load_queue = self.origin.list_users(last_loaded, self.BATCH_LIMIT)
+            load_queue = self.origin.list_ranks(last_loaded, self.BATCH_LIMIT)
             self.log.info(f"Found {len(load_queue)} ranks to load.")
             if not load_queue:
                 self.log.info("Quitting.")
                 return
 
             # Сохраняем объекты в базу dwh.
-            for user in load_queue:
-                self.stg.insert_user(conn, user)
+            for rank in load_queue:
+                self.stg.insert_rank(conn, rank)
 
             # Сохраняем прогресс.
             # Мы пользуемся тем же connection, поэтому настройка сохранится вместе с объектами,
             # либо откатятся все изменения целиком.
-            wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY] = max([user.id for user in load_queue])
+            wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY] = max([t.id for t in load_queue])
             wf_setting_json = json2str(wf_setting.workflow_settings)  # Преобразуем к строке, чтобы положить в БД.
             self.settings_repository.save_setting(conn, wf_setting.workflow_key, wf_setting_json)
 

@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 from bson.objectid import ObjectId
 
@@ -9,8 +9,17 @@ def json2str(obj: Any) -> str:
     return json.dumps(to_dict(obj), sort_keys=True, ensure_ascii=False)
 
 
-def str2json(str: str) -> Dict:
-    return json.loads(str)
+def str2json(data: Union[str, Dict, Any]) -> Dict:
+    # Если это уже словарь или список (драйвер сам распарсил JSONB)
+    if isinstance(data, (dict, list)):
+        return data
+
+    # Если это всё-таки строка (старый формат или обычный текст)
+    if isinstance(data, str):
+        return json.loads(data)
+
+    # На случай, если пришло что-то совсем странное (например, None)
+    return {}
 
 
 def to_dict(obj, classkey=None):

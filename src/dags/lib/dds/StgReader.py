@@ -1,4 +1,4 @@
-from lib import PgConnect
+from lib.pg_connect import PgConnect
 from typing import Any, List
 
 class StgReader:

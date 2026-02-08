@@ -1,10 +1,9 @@
 from datetime import datetime
 from logging import Logger
 from typing import Any, List, Dict
-from examples.stg import EtlSetting, StgEtlSettingsRepository
-from examples.stg.order_system_restaurants_dag.pg_saver import PgSaver
-from examples.stg.order_system_restaurants_dag.restaurant_reader import RestaurantReader
-from lib import PgConnect
+from lib.settings_repository import EtlSetting, EtlSettingsRepository
+from lib.pg_saver import PgSaver
+from lib.pg_connect import PgConnect
 from lib.dict_util import json2str
 
 
@@ -15,7 +14,7 @@ class OrderSystemLoader:
         self.reader = reader
         self.pg_saver = pg_saver
         self.pg_dest = pg_dest
-        self.settings_repository = StgEtlSettingsRepository()
+        self.settings_repository = EtlSettingsRepository()
         self.log = logger
         self.WF_KEY = workflow_key
         self.table_name = table_name

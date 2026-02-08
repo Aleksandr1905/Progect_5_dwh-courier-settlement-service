@@ -1,27 +1,27 @@
 import logging
-
 import pendulum
 from airflow.decorators import dag, task
 from airflow.models.variable import Variable
-from examples.stg.init_schema_dag.schema_init import SchemaDdl
-from lib import ConnectionBuilder
-
+from lib.schema_init import SchemaDdl
+from lib.pg_connect import ConnectionBuilder
 log = logging.getLogger(__name__)
 
 
 @dag(
+    dag_id="init_schema_dag",
     schedule_interval='0/15 * * * *',  # Задаем расписание выполнения дага - каждый 15 минут.
-    start_date=pendulum.datetime(2022, 5, 5, tz="UTC"),  # Дата начала выполнения дага. Можно поставить сегодня.
+    start_date=pendulum.datetime(2026, 2, 8, tz="UTC"),  # Дата начала выполнения дага.
     catchup=False,  # Нужно ли запускать даг за предыдущие периоды (с start_date до сегодня) - False (не нужно).
-    tags=['sprint5', 'stg', 'schema', 'ddl', 'example'],  # Теги, используются для фильтрации в интерфейсе Airflow.
+    tags=['project5','schema', 'ddl'],  # Теги, используются для фильтрации в интерфейсе Airflow.
     is_paused_upon_creation=True  # Остановлен/запущен при появлении. Сразу запущен.
 )
-def sprint5_example_stg_init_schema_dag():
+def stg_init_schema_dag():
+
     # Создаем подключение к базе dwh.
     dwh_pg_connect = ConnectionBuilder.pg_conn("PG_WAREHOUSE_CONNECTION")
 
     # Забираем путь до каталога с SQL-файлами из переменных Airflow.
-    ddl_path = Variable.get("EXAMPLE_STG_DDL_FILES_PATH")
+    ddl_path = Variable.get("STG_INIT_FILES_PATH")
 
     # Объявляем таск, который создает структуру таблиц.
     @task(task_id="schema_init")
@@ -37,4 +37,4 @@ def sprint5_example_stg_init_schema_dag():
 
 
 # Вызываем функцию, описывающую даг.
-stg_init_schema_dag = sprint5_example_stg_init_schema_dag()  # noqa
+stg_init_schema_dag = stg_init_schema_dag()  # noqa

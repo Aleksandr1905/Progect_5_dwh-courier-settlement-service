@@ -3,20 +3,19 @@ import pendulum
 from airflow.decorators import dag, task
 from airflow.models.variable import Variable
 
-from lib import ConnectionBuilder
+from lib.pg_connect import ConnectionBuilder
 
-from examples.dds.dds_settings_repository import DdsEtlSettingsRepository
-from examples.dds.stg_to_dds.DdsLoader import DdsLoader
-from examples.dds.stg_to_dds.DdsRepository import DdsRepository
-from examples.dds.stg_to_dds.StgReader import StgReader
-from examples.dds.stg_to_dds.CdmRepository import CdmRepository
+from lib.settings_repository import EtlSettingsRepository
+from lib.dds.DdsLoader import DdsLoader
+from lib.dds.DdsRepository import DdsRepository
+from lib.dds.StgReader import StgReader
 from lib.dict_util import str2json
 from datetime import datetime
 
 log = logging.getLogger(__name__)
 
 dwh_pg_connect = ConnectionBuilder.pg_conn("PG_WAREHOUSE_CONNECTION")
-settings_repo = DdsEtlSettingsRepository()
+settings_repo = EtlSettingsRepository()
 stg_reader = StgReader(dwh_pg_connect)
 
 
@@ -25,7 +24,7 @@ stg_reader = StgReader(dwh_pg_connect)
     schedule_interval='0/15 * * * *',  # Задаем расписание выполнения дага - каждый 15 минут.
     start_date=pendulum.datetime(2026, 2, 4, tz="UTC"),  # Дата начала выполнения дага. Можно поставить сегодня.
     catchup=False,  # Нужно ли запускать даг за предыдущие периоды (с start_date до сегодня) - False (не нужно).
-    tags=['sprint5', 'example', 'dds', 'origin'],  # Теги, используются для фильтрации в интерфейсе Airflow.
+    tags=['dds'],  # Теги, используются для фильтрации в интерфейсе Airflow.
     is_paused_upon_creation=True  # Остановлен/запущен при появлении. Сразу запущен.
 )
 def stg_to_dds_dag():
@@ -223,22 +222,14 @@ def stg_to_dds_dag():
         )
         loader.run_copy()
 
-    @task(task_id='cdm_settlement_report_load')
-    def load_cdm_settlement_report():
-        repo = CdmRepository()
-        with dwh_pg_connect.connection() as conn:
-            repo.load_cdm_settlement_report(conn)
-
-
     load_users_task = load_users()
     load_restaurants_task = load_restaurants()
     load_timestamps_task = load_timestamps()
     load_products_task = load_products()
     load_orders_task = load_orders()
     load_fct_product_sales_task = load_fct_product_sales()
-    load_cdm_settlement_report_task = load_cdm_settlement_report()
 
-    load_users_task >> load_restaurants_task >> load_timestamps_task >> load_products_task >> load_orders_task >>load_fct_product_sales_task >> load_cdm_settlement_report_task
+    load_users_task >> load_restaurants_task >> load_timestamps_task >> load_products_task >> load_orders_task >>load_fct_product_sales_task
 
 
 stg_dds_dag = stg_to_dds_dag()

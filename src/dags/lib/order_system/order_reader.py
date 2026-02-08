@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import Dict, List
 
-from lib import MongoConnect
+from lib.mongo_connect import MongoConnect
 
 
-class RestaurantReader:
+class OrderReader:
     def __init__(self, mc: MongoConnect) -> None:
         self.dbs = mc.client()
 
@@ -16,5 +16,5 @@ class RestaurantReader:
         sort = [('update_ts', 1)]
 
         # Вычитываем документы из MongoDB с применением фильтра и сортировки.
-        docs = list(self.dbs.get_collection("restaurants").find(filter=filter, sort=sort, limit=limit))
+        docs = list(self.dbs.get_collection("orders").find(filter=filter, sort=sort, limit=limit))
         return docs

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, List
 
-from lib import MongoConnect
+from lib.mongo_connect import MongoConnect
 
 
 class UserReader:
