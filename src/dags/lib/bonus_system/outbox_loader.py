@@ -4,7 +4,7 @@ from typing import List
 from lib.settings_repository import EtlSetting, EtlSettingsRepository
 from lib.pg_connect import PgConnect
 from lib.dict_util import json2str
-from psycopg import Connection
+from psycopg import Cursor
 from psycopg.rows import class_row
 from pydantic import BaseModel
 from datetime import datetime
@@ -40,25 +40,24 @@ class OutboxOriginRepository:
 
 class OutboxDestRepository:
 
-    def insert_events(self, conn: Connection, event: OutboxObj) -> None:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                    INSERT INTO stg.bonussystem_events(id, event_ts, event_type, event_value)
-                    VALUES (%(id)s, %(event_ts)s, %(event_type)s, %(event_value)s)
-                    ON CONFLICT (id) DO UPDATE
-                    SET
-                        event_ts = EXCLUDED.event_ts,
-                        event_type = EXCLUDED.event_type,
-                        event_value = EXCLUDED.event_value;
-                """,
-                {
-                    "id": event.id,
-                    "event_ts": event.event_ts,
-                    "event_type": event.event_type,
-                    "event_value": event.event_value
-                },
-            )
+    def insert_events(self, cursor: Cursor, event: OutboxObj) -> None:
+        cursor.execute(
+            """
+                INSERT INTO stg.bonussystem_events(id, event_ts, event_type, event_value)
+                VALUES (%(id)s, %(event_ts)s, %(event_type)s, %(event_value)s)
+                ON CONFLICT (id) DO UPDATE
+                SET
+                    event_ts = EXCLUDED.event_ts,
+                    event_type = EXCLUDED.event_type,
+                    event_value = EXCLUDED.event_value;
+            """,
+            {
+                "id": event.id,
+                "event_ts": event.event_ts,
+                "event_type": event.event_type,
+                "event_value": event.event_value
+            },
+        )
 
 
 class OutboxLoader:
@@ -78,30 +77,31 @@ class OutboxLoader:
         # Транзакция будет закоммичена, если код в блоке with пройдет успешно (т.е. без ошибок).
         # Если возникнет ошибка, произойдет откат изменений (rollback транзакции).
         with self.pg_dest.connection() as conn:
+            with conn.cursor() as cur:
 
-            # Прочитываем состояние загрузки
-            # Если настройки еще нет, заводим ее.
-            wf_setting = self.settings_repository.get_setting(conn, self.WF_KEY)
-            if not wf_setting:
-                wf_setting = EtlSetting(id=0, workflow_key=self.WF_KEY, workflow_settings={self.LAST_LOADED_ID_KEY: -1})
+                # Прочитываем состояние загрузки
+                # Если настройки еще нет, заводим ее.
+                wf_setting = self.settings_repository.get_setting(cur, self.WF_KEY)
+                if not wf_setting:
+                    wf_setting = EtlSetting(id=0, workflow_key=self.WF_KEY, workflow_settings={self.LAST_LOADED_ID_KEY: -1})
 
-            # Вычитываем очередную пачку объектов.
-            last_loaded = wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY]
-            load_queue = self.origin.list_events(last_loaded, self.BATCH_LIMIT)
-            self.log.info(f"Found {len(load_queue)} ranks to load.")
-            if not load_queue:
-                self.log.info("Quitting.")
-                return
+                # Вычитываем очередную пачку объектов.
+                last_loaded = wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY]
+                load_queue = self.origin.list_events(last_loaded, self.BATCH_LIMIT)
+                self.log.info(f"Found {len(load_queue)} ranks to load.")
+                if not load_queue:
+                    self.log.info("Quitting.")
+                    return
 
-            # Сохраняем объекты в базу dwh.
-            for event in load_queue:
-                self.stg.insert_events(conn, event)
+                # Сохраняем объекты в базу dwh.
+                for event in load_queue:
+                    self.stg.insert_events(cur, event)
 
-            # Сохраняем прогресс.
-            # Мы пользуемся тем же connection, поэтому настройка сохранится вместе с объектами,
-            # либо откатятся все изменения целиком.
-            wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY] = max([event.id for event in load_queue])
-            wf_setting_json = json2str(wf_setting.workflow_settings)  # Преобразуем к строке, чтобы положить в БД.
-            self.settings_repository.save_setting(conn, wf_setting.workflow_key, wf_setting_json)
+                # Сохраняем прогресс.
+                # Мы пользуемся тем же connection, поэтому настройка сохранится вместе с объектами,
+                # либо откатятся все изменения целиком.
+                wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY] = max([event.id for event in load_queue])
+                wf_setting_json = json2str(wf_setting.workflow_settings)  # Преобразуем к строке, чтобы положить в БД.
+                self.settings_repository.save_setting(cur, wf_setting.workflow_key, wf_setting_json)
 
-            self.log.info(f"Load finished on {wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY]}")
+                self.log.info(f"Load finished on {wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY]}")

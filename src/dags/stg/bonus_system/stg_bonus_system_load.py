@@ -1,5 +1,4 @@
 import logging
-
 import pendulum
 from airflow.decorators import dag, task
 from lib.bonus_system.ranks_loader import RankLoader

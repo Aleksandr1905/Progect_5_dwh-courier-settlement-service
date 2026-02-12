@@ -28,36 +28,36 @@ stg_reader = StgReader(dwh_pg_connect)
     is_paused_upon_creation=True  # Остановлен/запущен при появлении. Сразу запущен.
 )
 def stg_to_dds_dag():
-    def save_users_handler(conn, row):
+    def save_users_handler(cursor, row):
         payload = str2json(row[2])
         repo = DdsRepository()
 
         repo.insert_user(
-            conn,
+            cursor,
             user_id=row[1],
             user_name=payload.get('name'),
             user_login=payload.get('login')
         )
 
-    def save_restaurants_handler(conn, row):
+    def save_restaurants_handler(cursor, row):
         payload = str2json(row[2])
         repo = DdsRepository()
 
         repo.insert_restaurants(
-            conn,
+            cursor,
             restaurant_id=row[1],
             restaurant_name=payload.get('name'),
             active_from=row[3],
             active_to=datetime(2099, 12, 31))
 
-    def save_timestamps_handler(conn, row):
+    def save_timestamps_handler(cursor, row):
         payload = str2json(row[2])
         dt_str = payload.get('date')
 
         dt = datetime.fromisoformat(dt_str)
         repo = DdsRepository()
         repo.insert_timestamps(
-            conn,
+            cursor,
             ts=dt,
             year=dt.year,
             month=dt.month,
@@ -66,11 +66,11 @@ def stg_to_dds_dag():
             time=dt.time(),
         )
 
-    def save_products_handler(conn, row):
+    def save_products_handler(cursor, row):
         payload = str2json(row[2])
         mongo_id = payload.get('restaurant').get('id')
         repo = DdsRepository()
-        rest_id = repo.get_restaurant_id(conn, mongo_id)
+        rest_id = repo.get_restaurant_id(cursor, mongo_id)
 
         if not rest_id:
             return
@@ -78,7 +78,7 @@ def stg_to_dds_dag():
         products = payload.get('order_items')
         for item in products:
             repo.insert_products(
-                conn,
+                cursor,
                 product_id=item['id'],
                 product_name=item['name'],
                 product_price=item['price'],
@@ -86,41 +86,41 @@ def stg_to_dds_dag():
                 restaurant_id=rest_id
             )
 
-    def save_orders_handler(conn, row):
+    def save_orders_handler(cursor, row):
 
         payload = str2json(row[2])
         repo = DdsRepository()
 
         rest_mongo_id = payload.get('restaurant').get('id')
-        rest_id = repo.get_restaurant_id(conn, rest_mongo_id)
+        rest_id = repo.get_restaurant_id(cursor, rest_mongo_id)
         if not rest_id:
             return
 
         user_mongo_id = payload.get('user').get('id')
-        user_id = repo.get_user_id(conn, user_mongo_id)
+        user_id = repo.get_user_id(cursor, user_mongo_id)
         if not user_id:
             return
 
         ts_str = payload.get('update_ts')
         timestamp_dt = datetime.fromisoformat(ts_str)
-        timestamp_id = repo.get_timestamp_id(conn, timestamp_dt)
+        timestamp_id = repo.get_timestamp_id(cursor, timestamp_dt)
         if not timestamp_id:
             return
 
         repo.insert_orders(
-            conn,
+            cursor,
             order_key=payload['_id'],
             order_status=payload['final_status'],
             restaurant_id=rest_id,
             timestamp_id=timestamp_id,
             user_id=user_id)
 
-    def save_fct_sales_handler(conn, row):
+    def save_fct_sales_handler(cursor, row):
         payload = str2json(row[3])
 
         repo = DdsRepository()
         order_mongo_id = payload.get('order_id')
-        order_id = repo.get_order_id(conn, order_mongo_id)
+        order_id = repo.get_order_id(cursor, order_mongo_id)
 
         if not order_id:
             return
@@ -128,11 +128,11 @@ def stg_to_dds_dag():
         products = payload.get('product_payments')
         for item in products:
             product_mongo_id = item.get('product_id')
-            product_id = repo.get_product_id(conn, product_mongo_id)
+            product_id = repo.get_product_id(cursor, product_mongo_id)
 
             if product_id:
                 repo.insert_product_sales(
-                    conn,
+                    cursor,
                     product_id=product_id,
                     order_id=order_id,
                     count=int(item.get('quantity')),
@@ -142,7 +142,29 @@ def stg_to_dds_dag():
                     bonus_grant=float(item.get('bonus_grant'))
                 )
 
+    def save_courier_handler(cursor, row):
+        payload = row[2]
+        courier_id = payload.get('_id')
+        courier_name = payload.get('name')
+        repo = DdsRepository()
+        repo.insert_courier(cursor, courier_id, courier_name)
 
+    def delivery_save_handler(cursor, row):
+        payload = row[2]
+
+        delivery_data = {
+            'delivery_id': payload.get('delivery_id'),
+            'delivery_ts': payload.get('delivery_ts'),
+            'order_key': payload.get('order_id'),
+            'courier_id': payload.get('courier_id'),
+            'rate': payload.get('rate'),
+            'sum': payload.get('sum'),
+            'tip_sum': payload.get('tip_sum')
+        }
+
+        repo = DdsRepository()
+        repo.update_order_courier(cursor, delivery_data['order_key'], delivery_data['courier_id'])
+        repo.insert_fct_delivery(cursor, delivery_data)
 
     @task(task_id='dm_user_load')
     def load_users():
@@ -222,14 +244,44 @@ def stg_to_dds_dag():
         )
         loader.run_copy()
 
+    @task(task_id='dm_couriers_load')
+    def load_couriers():
+        loader = DdsLoader(
+            reader=stg_reader,
+            settings_repository=settings_repo,
+            save_handler=save_courier_handler,
+            workflow_key='bonussystem_couriers_stg_to_dds',
+            stg_table_name='stg.api_couriers',
+            pg_dest=dwh_pg_connect,
+            logger=log
+        )
+        loader.run_copy()
+
+    delivery_save_handler
+
+    @task(task_id='fct_deliveries_load')
+    def load_delivery():
+        loader = DdsLoader(
+            reader=stg_reader,
+            settings_repository=settings_repo,
+            save_handler=delivery_save_handler,
+            workflow_key='api_deliveries_stg_to_dds',
+            stg_table_name='stg.api_deliveries',
+            pg_dest=dwh_pg_connect,
+            logger=log
+        )
+        loader.run_copy()
+
     load_users_task = load_users()
     load_restaurants_task = load_restaurants()
     load_timestamps_task = load_timestamps()
     load_products_task = load_products()
     load_orders_task = load_orders()
     load_fct_product_sales_task = load_fct_product_sales()
+    load_couriers_task = load_couriers()
+    load_delivery_task = load_delivery()
 
-    load_users_task >> load_restaurants_task >> load_timestamps_task >> load_products_task >> load_orders_task >>load_fct_product_sales_task
+    load_users_task >> load_restaurants_task >> load_timestamps_task >> load_products_task >> load_orders_task >>load_fct_product_sales_task >> load_couriers_task >> load_delivery_task
 
 
 stg_dds_dag = stg_to_dds_dag()

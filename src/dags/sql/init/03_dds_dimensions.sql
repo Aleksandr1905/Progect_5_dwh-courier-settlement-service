@@ -50,3 +50,9 @@ CREATE TABLE IF NOT EXISTS dds.dm_orders (
     CONSTRAINT dm_orders_restaurant_id_fkey FOREIGN KEY (restaurant_id) REFERENCES dds.dm_restaurants(id),
     CONSTRAINT dm_orders_timestamp_id_fkey FOREIGN KEY (timestamp_id) REFERENCES dds.dm_timestamps(id)
 );
+
+CREATE TABLE IF NOT EXISTS dds.dm_couriers(
+    id SERIAL PRIMARY KEY,
+    courier_id VARCHAR NOT NULL UNIQUE,
+    courier_name VARCHAR NOT NULL
+);

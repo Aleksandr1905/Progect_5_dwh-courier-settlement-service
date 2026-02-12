@@ -28,36 +28,37 @@ class DdsLoader:
 
     def run_copy(self) -> None:
         with self.pg_dest.connection() as conn:
-            wf_setting = self.settings_repository.get_setting(conn, self.WF_KEY)
-            if not wf_setting:
-                wf_setting = EtlSetting(id = 0, workflow_key = self.WF_KEY, workflow_settings = {self.LAST_LOADED_ID_KEY: -1})
-            last_loaded_id = wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY]
-            self.log.info(f"starting to lad from last checkpoint = {last_loaded_id}")
+            with conn.cursor() as cur:
+                wf_setting = self.settings_repository.get_setting(cur, self.WF_KEY)
+                if not wf_setting:
+                    wf_setting = EtlSetting(id = 0, workflow_key = self.WF_KEY, workflow_settings = {self.LAST_LOADED_ID_KEY: -1})
+                last_loaded_id = wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY]
+                self.log.info(f"starting to lad from last checkpoint = {last_loaded_id}")
 
-            if self.stg_table_name == 'stg.bonussystem_events':
-                load_queue = self.reader.get_batch_bonuses(
-                    threshold=last_loaded_id,
-                    limit=self.BATCH_LIMIT,)
-            else:
-                load_queue = self.reader.get_batch(
-                    table_name = self.stg_table_name,
-                    threshold =  last_loaded_id,
-                    limit = self.BATCH_LIMIT)
+                if self.stg_table_name == 'stg.bonussystem_events':
+                    load_queue = self.reader.get_batch_bonuses(
+                        threshold=last_loaded_id,
+                        limit=self.BATCH_LIMIT,)
+                else:
+                    load_queue = self.reader.get_batch(
+                        table_name = self.stg_table_name,
+                        threshold =  last_loaded_id,
+                        limit = self.BATCH_LIMIT)
 
-            self.log.info(f"Found {len(load_queue)} documents to sync from STG")
+                self.log.info(f"Found {len(load_queue)} documents to sync from STG")
 
-            if not load_queue:
-                self.log.info("No documents to sync from STG")
-                return
+                if not load_queue:
+                    self.log.info("No documents to sync from STG")
+                    return
 
-            for row in load_queue:
-               self.save_handler(conn, row)
+                for row in load_queue:
+                   self.save_handler(cur, row)
 
-            max_id = max([row[0] for row in load_queue])
-            wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY] = max_id
-            wf_setting_json = json2str(wf_setting.workflow_settings)
-            self.settings_repository.save_setting(
-                conn,
-                wf_setting.workflow_key,
-                wf_setting_json)
-            self.log.info(f"Load finished. Last checkpoint updated to: {max_id}")
+                max_id = max([row[0] for row in load_queue])
+                wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY] = max_id
+                wf_setting_json = json2str(wf_setting.workflow_settings)
+                self.settings_repository.save_setting(
+                    cur,
+                    wf_setting.workflow_key,
+                    wf_setting_json)
+                self.log.info(f"Load finished. Last checkpoint updated to: {max_id}")

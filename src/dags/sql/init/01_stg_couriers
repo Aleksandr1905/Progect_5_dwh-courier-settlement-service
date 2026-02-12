@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS stg.api_couriers (
+    id SERIAL PRIMARY KEY,
+    object_id VARCHAR NOT NULL,     -- Сюда пишем _id из JSON
+    object_value JSONB NOT NULL,    -- Весь JSON курьера
+    update_ts TIMESTAMP NOT NULL,   -- Время загрузки
+    CONSTRAINT api_couriers_object_id_unique UNIQUE (object_id)
+);
