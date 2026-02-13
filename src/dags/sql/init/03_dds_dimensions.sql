@@ -38,12 +38,19 @@ CREATE TABLE IF NOT EXISTS dds.dm_timestamps (
     date DATE NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS dds.dm_couriers(
+    id SERIAL PRIMARY KEY,
+    courier_id VARCHAR NOT NULL UNIQUE,
+    courier_name VARCHAR NOT NULL
+);
+
 -- Заказы
 CREATE TABLE IF NOT EXISTS dds.dm_orders (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     restaurant_id INTEGER NOT NULL,
     timestamp_id INTEGER NOT NULL,
+    courier_id INTEGER REFERENCES dds.dm_couriers (id),
     order_key VARCHAR NOT NULL UNIQUE,
     order_status VARCHAR NOT NULL,
     CONSTRAINT dm_orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES dds.dm_users(id),
@@ -51,8 +58,3 @@ CREATE TABLE IF NOT EXISTS dds.dm_orders (
     CONSTRAINT dm_orders_timestamp_id_fkey FOREIGN KEY (timestamp_id) REFERENCES dds.dm_timestamps(id)
 );
 
-CREATE TABLE IF NOT EXISTS dds.dm_couriers(
-    id SERIAL PRIMARY KEY,
-    courier_id VARCHAR NOT NULL UNIQUE,
-    courier_name VARCHAR NOT NULL
-);
